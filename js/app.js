@@ -779,7 +779,12 @@ function saveTrip(res) {
       persons: settings.persons, bags: settings.bags, maxSpeed: settings.maxSpeed, avoidTolls: settings.avoidTolls,
     },
   });
-  saveJSON(SAVED_KEY, list.slice(0, 30));
+  if (!saveJSON(SAVED_KEY, list.slice(0, 30))) {
+    toast('Impossible d\'enregistrer : le navigateur bloque le stockage (navigation privée ?)');
+    return;
+  }
+  // Demande au navigateur de ne pas effacer les données du site
+  navigator.storage?.persist?.().catch(() => {});
   renderSavedList();
   toast('Itinéraire enregistré ⭐ Retrouve-le sur l\'écran d\'accueil');
 }
