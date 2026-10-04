@@ -206,3 +206,41 @@ export function planCharging(profile, stations, veh, cfg) {
     socAt,
   };
 }
+
+// Valeurs du temps testées : de « chaque minute compte » à « chaque euro compte » (secondes par €)
+export const OPTION_WEIGHTS = [5, 45, 120, 300, 720, 2000];
+
+/**
+ * Calcule plusieurs itinéraires de recharge et ne garde que les compromis intéressants :
+ * aucune option n'est à la fois plus lente et plus chère qu'une autre.
+ * Renvoie les options triées de la plus rapide à la moins chère, avec un libellé.
+ */
+export function planOptions(profile, stations, veh, cfg, weights = OPTION_WEIGHTS) {
+  const found = [];
+  let failure = null;
+  for (const w of weights) {
+    const r = planCharging(profile, stations, veh, { ...cfg, secondsPerEuro: w });
+    if (!r.ok) { failure = failure || r; continue; }
+    const sig = r.stops.map((s) => s.station.id + '@' + s.departSoc).join('|');
+    if (!found.some((f) => f.sig === sig)) found.push({ ...r, sig });
+  }
+  if (!found.length) return { ok: false, farthestKm: failure?.farthestKm ?? 0, options: [] };
+
+  // Front de Pareto temps / coût (on ignore les écarts < 1 min et < 0,50 €)
+  const better = (a, b) => a.totalS <= b.totalS + 60 && a.cost <= b.cost + 0.5 &&
+    (a.totalS < b.totalS - 60 || a.cost < b.cost - 0.5);
+  let options = found.filter((o) => !found.some((p) => p !== o && better(p, o)));
+  // Doublons pratiques : même durée et même coût à peu près
+  options = options.filter((o, i) => !options.slice(0, i).some((p) =>
+    Math.abs(p.totalS - o.totalS) < 120 && Math.abs(p.cost - o.cost) < 1));
+  options.sort((a, b) => a.totalS - b.totalS || a.cost - b.cost);
+  if (options.length > 3) options = [options[0], options[Math.floor(options.length / 2)], options[options.length - 1]];
+
+  options.forEach((o, i) => {
+    if (options.length === 1) o.label = 'Meilleur itinéraire';
+    else if (i === 0) o.label = 'Le plus rapide';
+    else if (i === options.length - 1) o.label = 'Le moins cher';
+    else o.label = 'Compromis';
+  });
+  return { ok: true, options };
+}

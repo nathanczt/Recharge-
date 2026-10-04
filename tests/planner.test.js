@@ -114,3 +114,28 @@ test('performance : 1000 km et 400 bornes en moins de 2 s', () => {
   assert.ok(ms < 2000, `${ms} ms`);
   for (const s of r.stops) assert.ok(s.departSoc - s.arriveSoc >= 9.9, 'pas de micro-arrêt');
 });
+
+test('options : plus rapide d\'abord, moins cher en dernier, sans option dominée', async () => {
+  const { planOptions } = await import('../js/planner.js');
+  const kms = [];
+  for (let k = 30; k < 600; k += 30) kms.push(k);
+  const { profile, stations } = setup(600, kms);
+  // Bornes alternées : rapides et chères / lentes et pas chères
+  stations.forEach((s, i) => { s.powerKW = i % 2 ? 50 : 150; s.price = i % 2 ? 0.35 : 0.69; });
+  const r = planOptions(profile, stations, veh, baseCfg);
+  assert.ok(r.ok);
+  assert.ok(r.options.length >= 2, `options ${r.options.length}`);
+  const [first, ...rest] = r.options;
+  const last = r.options[r.options.length - 1];
+  assert.equal(first.label, 'Le plus rapide');
+  assert.equal(last.label, 'Le moins cher');
+  for (const o of rest) assert.ok(o.totalS >= first.totalS && o.cost < first.cost, 'compromis réel');
+});
+
+test('options : trajet impossible', async () => {
+  const { planOptions } = await import('../js/planner.js');
+  const { profile, stations } = setup(700, [100, 650]);
+  const r = planOptions(profile, stations, veh, baseCfg);
+  assert.equal(r.ok, false);
+  assert.ok(r.farthestKm >= 100);
+});

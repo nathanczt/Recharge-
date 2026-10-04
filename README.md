@@ -13,7 +13,8 @@ Profils inclus : **Hyundai Kona Electric 64 kWh (2018-2023)** et **Kona 65 kWh (
 - **Choix des bornes** : puissance minimale, réseaux à éviter, bornes à imposer / exclure / remplacer,
   Superchargeurs Tesla ouverts à tous.
 - **Coût du trajet** : prix au kWh par réseau (modifiables avec tes abonnements), pertes de charge incluses.
-  Trois priorités : Rapide, Équilibré (1 € ≈ 2 min), Économique (1 € ≈ 12 min).
+  Le site propose directement plusieurs itinéraires (le plus rapide, un compromis, le moins cher)
+  avec leur durée et leur coût : il suffit de choisir.
 - **Navigation** : chaque arrêt s'ouvre dans Google Maps ou Waze, ou tout le trajet d'un coup dans Google Maps.
 
 ## Données (gratuites, sans compte)

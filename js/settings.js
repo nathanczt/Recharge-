@@ -17,7 +17,6 @@ export const DEFAULTS = {
   minPowerKW: 50,
   corridorKm: 3,
   stopOverheadMin: 4,
-  mode: 'balanced',
   avoidTolls: false,
   allowTesla: true,
   source: 'osm',
@@ -26,12 +25,6 @@ export const DEFAULTS = {
   prices: {}, // { operatorKey: €/kWh }
   excludedOps: [], // operatorKey
   excludedStations: [], // id
-};
-
-export const MODES = {
-  fast: { label: 'Rapide', secondsPerEuro: 5 },
-  balanced: { label: 'Équilibré', secondsPerEuro: 120 }, // 1 € ≈ 2 min
-  cheap: { label: 'Économique', secondsPerEuro: 720 }, // 1 € ≈ 12 min
 };
 
 export function loadSettings() {

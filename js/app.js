@@ -1,10 +1,10 @@
 import { VEHICLES, flatConsumption } from './energy.js';
 import { resampleRoute, projectStations, clusterStations, haversine } from './geo.js';
-import { buildProfile, planCharging } from './planner.js';
+import { buildProfile, planOptions } from './planner.js';
 import { geocode, route, elevations, weatherAlong } from './api.js';
 import { fetchOsmStations, fetchOcmStations } from './stations.js';
 import { OPERATORS, DEFAULT_PRICE } from './operators.js';
-import { loadSettings, saveSettings, loadJSON, saveJSON, MODES, DEFAULTS } from './settings.js';
+import { loadSettings, saveSettings, loadJSON, saveJSON, DEFAULTS } from './settings.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -188,18 +188,6 @@ $('#departInput').value = localNow();
 const speedSelect = $('#speedSelect');
 speedSelect.value = String(settings.maxSpeed);
 speedSelect.addEventListener('change', () => { settings.maxSpeed = +speedSelect.value; saveSettings(settings); });
-
-function renderModes() {
-  for (const b of document.querySelectorAll('#modeChips button')) b.setAttribute('aria-checked', b.dataset.mode === settings.mode);
-}
-$('#modeChips').addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  settings.mode = b.dataset.mode;
-  saveSettings(settings);
-  renderModes();
-});
-renderModes();
 
 const tolls = $('#tollsInput');
 tolls.checked = settings.avoidTolls;
@@ -394,13 +382,25 @@ function runPlan(departure) {
     arrivalSoc: settings.arrivalSoc,
     maxCharge: settings.maxCharge,
     stopOverheadS: settings.stopOverheadMin * 60,
-    secondsPerEuro: MODES[settings.mode].secondsPerEuro,
     detourKWhPerKm: flatConsumption(veh, 50, 15) / 100,
   };
   const t0 = performance.now();
-  const res = planCharging(profile, candidates, veh, cfg);
-  console.info('Planification', Math.round(performance.now() - t0), 'ms', candidates.length, 'bornes');
-  state.result = { res, profile, departure, cfg };
+  const plan = planOptions(profile, candidates, veh, cfg);
+  console.info('Planification', Math.round(performance.now() - t0), 'ms', candidates.length, 'bornes', plan.options.length, 'options');
+  // Garde le même type d'option sélectionné après un recalcul (borne imposée, exclue…)
+  const prevLabel = state.result?.plan.ok ? state.result.plan.options[state.result.selected]?.label : null;
+  const keep = plan.options.findIndex((o) => o.label === prevLabel);
+  state.result = { plan, selected: keep >= 0 ? keep : 0, profile, departure, cfg };
+  showSelected();
+}
+
+// Itinéraire actuellement affiché (ou l'échec)
+function currentRes() {
+  const { plan, selected } = state.result;
+  return plan.ok ? plan.options[selected] : plan;
+}
+
+function showSelected() {
   drawCandidates();
   renderResult();
 }
@@ -438,7 +438,7 @@ function stationPopup(s) {
 function drawCandidates() {
   layers.candidates.clearLayers();
   layers.stops.clearLayers();
-  const { res } = state.result;
+  const res = currentRes();
   const stopIds = new Set(res.ok ? res.stops.map((s) => s.station.id) : []);
   for (const s of state.candidates) {
     if (stopIds.has(s.id)) continue;
@@ -492,7 +492,8 @@ function fullTripLink(stops) {
 }
 
 function renderResult() {
-  const { res, profile, departure, cfg } = state.result;
+  const { plan, selected, profile, departure, cfg } = state.result;
+  const res = currentRes();
   showView('resultView');
   $('#resultTitle').textContent = `${state.from.label} → ${state.to.label}`;
   const body = $('#resultBody');
@@ -512,14 +513,14 @@ function renderResult() {
   const tempTxt = settings.tempOverride != null ? `${settings.tempOverride} °C`
     : state.trip.weather ? (() => { const s = state.trip.weather.summary(); const a = Math.round(s.min), b = Math.round(s.max); return a === b ? `${a} °C` : `${a} à ${b} °C`; })() : '15 °C (par défaut)';
 
-  let html = `<div class="tiles">
+  let html = optionsHTML(plan.options, selected, departure) + `<div class="tiles">
     <div class="tile"><b>${fmtDur(res.totalS)}</b><span>Arrivée ${fmtClock(arrival)}${arrival.toDateString() !== departure.toDateString() ? ' (J+1)' : ''}</span></div>
     <div class="tile"><b>${fmtEuro(res.cost)}</b><span>Recharges · ${Math.round(res.gridKWh)} kWh</span></div>
     <div class="tile"><b>${res.stops.length} arrêt${res.stops.length > 1 ? 's' : ''}</b><span>${fmtDur(res.chargeS)} de recharge</span></div>
     <div class="tile"><b>${pct(res.arriveSoc)}</b><span>Batterie à l'arrivée</span></div>
   </div>
   <p class="meta"><b>${fmtKm(res.distKm)}</b> · conduite ${fmtDur(res.driveS)} · conso moyenne <b>${avg.toFixed(1)} kWh/100</b>
-   · ${tempTxt}${state.trip.elev ? ` · relief +${climb(state.trip.elev).up} m` : ''} · ${MODES[settings.mode].label}</p>
+   · ${tempTxt}${state.trip.elev ? ` · relief +${climb(state.trip.elev).up} m` : ''}</p>
   ${chartSVG(res, profile, state.trip.elev, cfg)}
   <div class="actions-row">
     <a class="small-btn accent" target="_blank" rel="noopener" href="${fullTripLink(res.stops)}">Ouvrir dans Google Maps</a>
@@ -569,15 +570,35 @@ function renderResult() {
     ${settings.source === 'ocm' && settings.ocmKey ? 'Open Charge Map' : 'OpenStreetMap'}. Touche une borne sur la carte pour l'imposer ou l'exclure.</p>`;
   body.innerHTML = html;
 
+  body.querySelectorAll('[data-opt]').forEach((b) => {
+    b.onclick = () => { state.result.selected = +b.dataset.opt; showSelected(); };
+  });
   $('#recalcBtn').onclick = () => compute({ keepForced: true });
   body.querySelectorAll('[data-sact]').forEach((b) => { b.onclick = () => stationAction(b.dataset.sact, b.dataset.id); });
   body.querySelectorAll('[data-alts]').forEach((b) => { b.onclick = () => toggleAlts(+b.dataset.alts); });
 }
 
+function optionsHTML(options, selected, departure) {
+  if (options.length < 2) return '';
+  const fastest = options[0];
+  const cards = options.map((o, i) => {
+    const arr = new Date(departure.getTime() + o.totalS * 1000);
+    const dt = o.totalS - fastest.totalS;
+    const de = o.cost - fastest.cost;
+    const diff = i === 0 ? '' : `<small>+${fmtDur(dt)} · ${de <= 0 ? '−' : '+'}${fmtEuro(Math.abs(de))}</small>`;
+    return `<button class="option" data-opt="${i}" aria-pressed="${i === selected}">
+      <span class="opt-label">${o.label}</span>
+      <span class="opt-nums"><b>${fmtDur(o.totalS)} · ${fmtEuro(o.cost)}</b>${diff}</span>
+      <span class="opt-sub">Arrivée ${fmtClock(arr)} · ${o.stops.length} arrêt${o.stops.length > 1 ? 's' : ''} · ${fmtDur(o.chargeS)} de charge</span>
+    </button>`;
+  }).join('');
+  return `<p class="options-title">${options.length} itinéraires possibles</p><div class="options">${cards}</div>`;
+}
+
 function toggleAlts(i) {
   const box = $('#alts-' + i);
   if (!box.hidden) { box.hidden = true; return; }
-  const { res } = state.result;
+  const res = currentRes();
   const stop = res.stops[i];
   const pts = state.trip.points;
   const used = new Set(res.stops.map((s) => s.station.id));
@@ -764,7 +785,6 @@ function renderCalib() {
 
 $('#settingsDlg').addEventListener('close', () => {
   speedSelect.value = String(settings.maxSpeed);
-  renderModes();
   if (state.result && !$('#resultView').hidden) compute({ keepForced: true });
 });
 
