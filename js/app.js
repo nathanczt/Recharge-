@@ -1,5 +1,5 @@
 import { VEHICLES, flatConsumption } from './energy.js';
-import { resampleRoute, projectStations, clusterStations, haversine } from './geo.js';
+import { resampleRoute, projectStations, clusterStations, haversine, thin } from './geo.js';
 import { buildProfile, planOptions } from './planner.js';
 import { geocode, route, elevations, weatherAlong } from './api.js';
 import { fetchOsmStations, fetchOcmStations } from './stations.js';
@@ -16,6 +16,7 @@ const state = {
   trip: null, // données réseau en cache : route, points, chunks, elev, weather, stations
   forced: new Set(),
   result: null,
+  saved: null, // itinéraire enregistré affiché
   candidates: [],
   abort: null,
 };
@@ -240,6 +241,7 @@ if (state.from && state.to) fitMap([[state.from.lat, state.from.lon], [state.to.
 $('#goBtn').addEventListener('click', () => compute());
 $('#backBtn').addEventListener('click', () => {
   // Depuis le détail d'une proposition : retour à la liste des propositions
+  if (state.saved) { closeSaved(); return; }
   const r = state.result;
   if (r && r.view === 'detail' && r.plan.ok && r.plan.options.length > 1) {
     r.view = 'list';
@@ -591,8 +593,9 @@ function renderResult() {
   <div class="actions-row">
     <a class="small-btn accent" target="_blank" rel="noopener" href="${fullTripLink(res.stops)}">Ouvrir dans Google Maps</a>
     <button class="small-btn" id="recalcBtn">Recalculer</button>
+    <button class="small-btn" id="saveBtn">☆ Enregistrer</button>
   </div>
-  ${wazeBoxHTML(res)}
+  ${wazeBoxHTML(navLegs(res))}
   <ol class="timeline">
     <li class="tl-item tl-start"><span class="tl-badge">A</span>
       <span class="tl-time">${fmtClock(departure)}</span> · <span class="tl-name">${esc(state.from.label)}</span>
@@ -639,8 +642,9 @@ function renderResult() {
 
   $('#toListBtn')?.addEventListener('click', () => $('#backBtn').click());
   body.querySelectorAll('[data-leg]').forEach((a) => {
-    a.addEventListener('click', () => startNav(res, +a.dataset.leg));
+    a.addEventListener('click', () => startNav(navLegs(res), +a.dataset.leg, `${state.from.label} → ${state.to.label}`));
   });
+  $('#saveBtn').onclick = () => saveTrip(res);
   $('#recalcBtn').onclick = () => compute({ keepForced: true });
   body.querySelectorAll('[data-sact]').forEach((b) => { b.onclick = () => stationAction(b.dataset.sact, b.dataset.id); });
   body.querySelectorAll('[data-alts]').forEach((b) => { b.onclick = () => toggleAlts(+b.dataset.alts); });
@@ -688,8 +692,7 @@ function navLegs(res) {
   return legs;
 }
 
-function wazeBoxHTML(res) {
-  const legs = navLegs(res);
+function wazeBoxHTML(legs) {
   const nav = loadNav();
   const same = nav && nav.legs.length === legs.length && nav.legs.every((l, i) => l.name === legs[i].name);
   const items = legs.map((l, i) => {
@@ -711,11 +714,16 @@ function loadNav() {
   return nav;
 }
 
-function startNav(res, i) {
-  const legs = navLegs(res);
+function startNav(legs, i, title) {
   // L'étape i est en cours : la suivante sera i + 1
-  saveJSON('recharge.nav', { legs, i: i + 1, t: Date.now(), title: `${state.from.label} → ${state.to.label}` });
-  setTimeout(() => { renderNavBar(); if (state.result) renderResult(); }, 400);
+  saveJSON('recharge.nav', { legs, i: i + 1, t: Date.now(), title });
+  setTimeout(refreshAfterNav, 400);
+}
+
+function refreshAfterNav() {
+  renderNavBar();
+  if (state.saved) showSaved(state.saved.id);
+  else if (state.result && !$('#resultView').hidden) renderResult();
 }
 
 function renderNavBar() {
@@ -729,16 +737,171 @@ function renderNavBar() {
     <button class="nb-close" aria-label="Arrêter le guidage">✕</button>`;
   bar.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => {
     saveJSON('recharge.nav', { ...nav, i: nav.i + 1, t: Date.now() });
-    setTimeout(() => { renderNavBar(); if (state.result) renderResult(); }, 400);
+    setTimeout(refreshAfterNav, 400);
   }));
   bar.querySelector('.nb-close').onclick = () => {
     saveJSON('recharge.nav', null);
-    renderNavBar();
-    if (state.result) renderResult();
+    refreshAfterNav();
   };
   bar.hidden = false;
 }
 renderNavBar();
+
+/* ================= Itinéraires enregistrés ================= */
+
+const SAVED_KEY = 'recharge.saved';
+const loadSaved = () => loadJSON(SAVED_KEY, []);
+
+function saveTrip(res) {
+  const def = `${state.from.label} → ${state.to.label}`;
+  const name = prompt('Nom de l\'itinéraire', def);
+  if (name == null) return;
+  const { departure, cfg } = state.result;
+  const list = loadSaved();
+  list.unshift({
+    id: Date.now().toString(36),
+    name: name.trim() || def,
+    savedAt: Date.now(),
+    departure: departure.toISOString(),
+    from: state.from,
+    to: state.to,
+    label: res.label || '',
+    totalS: res.totalS, driveS: res.driveS, chargeS: res.chargeS, cost: res.cost, gridKWh: res.gridKWh,
+    distKm: res.distKm, energyKWh: res.energyKWh, arriveSoc: res.arriveSoc, startSoc: cfg.startSoc,
+    stops: res.stops.map((s) => ({
+      id: s.station.id, name: s.station.name, operator: s.station.operator, lat: s.station.lat, lon: s.station.lon,
+      powerKW: s.station.powerKW, price: s.station.price, km: s.km, arriveT: s.arriveT,
+      arriveSoc: s.arriveSoc, departSoc: s.departSoc, chargeS: s.chargeS, kWh: s.kWh, cost: s.cost,
+    })),
+    line: thin(state.trip.route.coords, 400).map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)]),
+    prefs: {
+      startSoc: settings.startSoc, arrivalSoc: settings.arrivalSoc, maxCharge: settings.maxCharge, minSoc: settings.minSoc,
+      persons: settings.persons, bags: settings.bags, maxSpeed: settings.maxSpeed, avoidTolls: settings.avoidTolls,
+    },
+  });
+  saveJSON(SAVED_KEY, list.slice(0, 30));
+  renderSavedList();
+  toast('Itinéraire enregistré ⭐ Retrouve-le sur l\'écran d\'accueil');
+}
+
+function renderSavedList() {
+  const list = loadSaved();
+  const box = $('#savedList');
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<p class="batt-title saved-title">Itinéraires enregistrés</p>` + list.map((t) => `
+    <button type="button" class="saved-item" data-saved="${esc(t.id)}">
+      <span class="si-txt"><b>${esc(t.name)}</b>
+      <small>${fmtDur(t.totalS)} · ${fmtEuro(t.cost)} · ${t.stops.length} arrêt${t.stops.length > 1 ? 's' : ''} · ${fmtKm(t.distKm)}</small></span>
+      <span class="si-go">›</span>
+    </button>`).join('');
+  box.querySelectorAll('[data-saved]').forEach((b) => { b.onclick = () => showSaved(b.dataset.saved); });
+}
+
+function savedLegs(t) {
+  const legs = t.stops.map((s) => ({
+    name: s.name, lat: s.lat, lon: s.lon, info: `recharge ${pct(s.arriveSoc)} → ${pct(s.departSoc)} · ${fmtDur(s.chargeS)}`,
+  }));
+  legs.push({ name: t.to.label, lat: t.to.lat, lon: t.to.lon, info: `arrivée avec ${pct(t.arriveSoc)}` });
+  return legs;
+}
+
+function showSaved(id) {
+  const t = loadSaved().find((x) => x.id === id);
+  if (!t) return;
+  state.saved = t;
+  showView('resultView');
+  $('#resultTitle').textContent = t.name;
+
+  // Carte : tracé et arrêts enregistrés
+  layers.route.clearLayers(); layers.candidates.clearLayers(); layers.stops.clearLayers();
+  L.polyline(t.line, { color: '#0f766e', weight: 9, opacity: 0.25 }).addTo(layers.route);
+  L.polyline(t.line, { color: dark ? '#2dd4bf' : '#0f766e', weight: 4 }).addTo(layers.route);
+  t.stops.forEach((s, i) => L.marker([s.lat, s.lon], {
+    icon: L.divIcon({ className: '', html: `<div class="stop-marker">${i + 1}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
+  }).addTo(layers.stops));
+  layers.ends.clearLayers();
+  endMarker(t.from, '#16a34a').addTo(layers.ends);
+  endMarker(t.to, '#dc2626').addTo(layers.ends);
+  fitMap(t.line);
+
+  const saved = new Date(t.savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  let html = `<p class="meta">${esc(t.from.label)} → ${esc(t.to.label)} · enregistré le ${saved}${t.label ? ' · ' + esc(t.label) : ''}</p>
+    <div class="tiles">
+      <div class="tile"><b>${fmtDur(t.totalS)}</b><span>Durée totale</span></div>
+      <div class="tile"><b>${fmtEuro(t.cost)}</b><span>Recharges · ${Math.round(t.gridKWh)} kWh</span></div>
+      <div class="tile"><b>${t.stops.length} arrêt${t.stops.length > 1 ? 's' : ''}</b><span>${fmtDur(t.chargeS)} de recharge</span></div>
+      <div class="tile"><b>${pct(t.arriveSoc)}</b><span>Batterie à l'arrivée</span></div>
+    </div>
+    <div class="actions-row">
+      <button class="small-btn accent" id="replayBtn">Recalculer maintenant</button>
+      <a class="small-btn" target="_blank" rel="noopener" href="${savedGmaps(t)}">Google Maps</a>
+      <button class="small-btn" id="delSavedBtn">Supprimer</button>
+    </div>
+    <p class="meta">« Recalculer maintenant » reprend ce trajet avec les mêmes bornes, la météo et l'heure actuelles.</p>
+    ${wazeBoxHTML(savedLegs(t))}
+    <ol class="timeline">
+      <li class="tl-item tl-start"><span class="tl-badge">A</span><span class="tl-name">${esc(t.from.label)}</span>
+        <div class="tl-sub">Départ avec ${pct(t.startSoc)}</div></li>`;
+  let prevKm = 0, prevT = 0;
+  t.stops.forEach((s, i) => {
+    html += `<li class="tl-item"><span class="tl-badge">${i + 1}</span>
+      <div class="leg">↓ ${fmtKm(s.km - prevKm)} · ${fmtDur(s.arriveT - prevT)}</div>
+      <span class="tl-name">${esc(s.name)}</span>
+      <div class="tl-sub">${esc(s.operator)} · ${Math.round(s.powerKW)} kW · km ${Math.round(s.km)}</div>
+      <div class="stop-card"><div class="stop-stats">
+        <span>🔋 ${pct(s.arriveSoc)} → <b>${pct(s.departSoc)}</b></span>
+        <span>⏱️ <b>${fmtDur(s.chargeS)}</b></span>
+        <span>⚡ ${s.kWh.toFixed(1)} kWh</span>
+        <span>💶 <b>${fmtEuro(s.cost)}</b> (${fmtEuro(s.price)}/kWh)</span>
+      </div></div></li>`;
+    prevKm = s.km; prevT = s.arriveT + s.chargeS;
+  });
+  html += `<li class="tl-item tl-end"><span class="tl-badge">B</span>
+    <div class="leg">↓ ${fmtKm(t.distKm - prevKm)} · ${fmtDur(t.totalS - prevT)}</div>
+    <span class="tl-name">${esc(t.to.label)}</span><div class="tl-sub">Arrivée avec ${pct(t.arriveSoc)}</div></li></ol>`;
+
+  const body = $('#resultBody');
+  body.innerHTML = html;
+  body.querySelectorAll('[data-leg]').forEach((a) => {
+    a.addEventListener('click', () => startNav(savedLegs(t), +a.dataset.leg, t.name));
+  });
+  $('#delSavedBtn').onclick = () => {
+    if (!confirm('Supprimer cet itinéraire enregistré ?')) return;
+    saveJSON(SAVED_KEY, loadSaved().filter((x) => x.id !== t.id));
+    renderSavedList();
+    closeSaved();
+  };
+  $('#replayBtn').onclick = () => replaySaved(t);
+}
+
+function savedGmaps(t) {
+  const wp = t.stops.slice(0, 9).map((s) => `${s.lat},${s.lon}`).join('|');
+  return `https://www.google.com/maps/dir/?api=1&origin=${t.from.lat},${t.from.lon}` +
+    `&destination=${t.to.lat},${t.to.lon}&travelmode=driving` + (wp ? `&waypoints=${encodeURIComponent(wp)}` : '');
+}
+
+function closeSaved() {
+  state.saved = null;
+  layers.route.clearLayers(); layers.candidates.clearLayers(); layers.stops.clearLayers();
+  drawEnds();
+  showView('formView');
+}
+
+function replaySaved(t) {
+  Object.assign(settings, t.prefs);
+  saveSettings(settings);
+  pctRefresh.forEach((f) => f());
+  speedSelect.value = String(settings.maxSpeed);
+  tolls.checked = settings.avoidTolls;
+  state.saved = null;
+  setPlace('from', t.from);
+  setPlace('to', t.to);
+  $('#departInput').value = localNow();
+  state.forced = new Set(t.stops.map((s) => s.id));
+  compute({ keepForced: true });
+}
+
+renderSavedList();
 
 function toggleAlts(i) {
   const box = $('#alts-' + i);

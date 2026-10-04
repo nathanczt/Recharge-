@@ -298,3 +298,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @media (prefers-color-scheme: dark) {
   .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
 }
+
+/* ---------- Itinéraires enregistrés ---------- */
+.saved-title { margin-top: 18px; }
+.saved-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  padding: 10px 12px; margin-bottom: 6px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--bg-2); color: var(--fg);
+}
+.si-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.si-txt b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si-txt small { color: var(--muted); font-size: 12px; }
+.si-go { font-size: 22px; color: var(--muted); }
