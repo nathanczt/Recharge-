@@ -44,7 +44,7 @@ function toast(msg, ms = 3500) {
 
 const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([46.6, 2.4], 6);
 const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/${dark ? 'dark_all' : 'voyager'}/{z}/{x}/{y}{r}.png`, {
+L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}{r}.png`, {
   maxZoom: 19, subdomains: 'abcd',
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
 }).addTo(map);
@@ -188,6 +188,28 @@ bindPct('soc', 'startSoc');
 bindPct('arrSoc', 'arrivalSoc');
 bindPct('maxCharge', 'maxCharge');
 bindPct('minSoc', 'minSoc');
+
+// Personnes à bord (conducteur compris) et bagages : poids moyens
+const PERSON_KG = 75, BAG_KG = 12;
+const loadKg = () => (settings.persons - 1) * PERSON_KG + settings.bags * BAG_KG;
+function renderLoad() {
+  $('#personsVal').textContent = settings.persons;
+  $('#bagsVal').textContent = settings.bags;
+  $('#personsKg').textContent = `≈ ${settings.persons * PERSON_KG} kg`;
+  $('#bagsKg').textContent = settings.bags ? `≈ ${settings.bags * BAG_KG} kg` : '';
+}
+document.querySelectorAll('.stepper').forEach((st) => {
+  st.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-d]');
+    if (!b) return;
+    const k = st.dataset.key;
+    settings[k] = Math.max(+st.dataset.min, Math.min(+st.dataset.max, settings[k] + +b.dataset.d));
+    saveSettings(settings);
+    renderLoad();
+  });
+});
+pctRefresh.push(renderLoad);
+renderLoad();
 
 function localNow() {
   const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
@@ -381,7 +403,7 @@ function runPlan(departure, { keepView = false } = {}) {
   const opts = {
     maxSpeedKmh: settings.maxSpeed,
     speedFactor: settings.speedFactor,
-    extraMassKg: settings.extraMassKg,
+    extraMassKg: loadKg(),
     factor: settings.factor / 100,
     tempC: settings.tempOverride,
   };
@@ -729,7 +751,6 @@ function openSettings() {
     <h3>Véhicule</h3>
     <p class="meta"><b>${esc(VEHICLES[s.vehicle].name)}</b> · ${VEHICLES[s.vehicle].usableKWh} kWh utiles · charge rapide jusqu'à ~100 kW</p>
     ${num('healthIn', 'État de santé batterie (SoH)', s.batteryHealth, { min: 70, max: 100, unit: ' %' })}
-    ${num('massIn', 'Passagers et bagages (en plus du conducteur)', s.extraMassKg, { min: 0, max: 400, step: 10, unit: ' kg' })}
 
     <h3>Précision de la consommation</h3>
     ${num('factorIn', 'Correction (si tu consommes plus / moins que prévu)', s.factor, { min: 80, max: 130, unit: ' %' })}
@@ -776,7 +797,6 @@ function openSettings() {
     renderCarHint();
   });
   bind('healthIn', (el) => { settings.batteryHealth = +el.value; });
-  bind('massIn', (el) => { settings.extraMassKg = +el.value; });
   bind('factorIn', (el) => { settings.factor = +el.value; });
   bind('tempMode', (el) => { settings.tempOverride = el.value === 'auto' ? null : +el.value; });
   bind('minPowIn', (el) => { settings.minPowerKW = +el.value; });
@@ -818,7 +838,7 @@ function renderCalib() {
   const el = $('#calib');
   if (!el) return;
   const veh = VEHICLES[settings.vehicle];
-  const o = { extraMassKg: settings.extraMassKg, factor: settings.factor / 100 };
+  const o = { extraMassKg: loadKg(), factor: settings.factor / 100 };
   const speeds = [50, 90, 110, 130];
   const cap = veh.usableKWh * settings.batteryHealth / 100;
   const row = (t) => `<tr><td>${t} °C</td>${speeds.map((v) => `<td>${flatConsumption(veh, v, t, o).toFixed(1)}</td>`).join('')}</tr>`;

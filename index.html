@@ -65,6 +65,26 @@
         </div>
       </div>
 
+      <p class="batt-title">À bord</p>
+      <div class="batt load">
+        <div class="field">
+          <span class="label">Personnes <output id="personsKg"></output></span>
+          <div class="stepper" data-key="persons" data-min="1" data-max="7">
+            <button type="button" data-d="-1" aria-label="Une personne de moins">−</button>
+            <b id="personsVal">1</b>
+            <button type="button" data-d="1" aria-label="Une personne de plus">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Bagages <output id="bagsKg"></output></span>
+          <div class="stepper" data-key="bags" data-min="0" data-max="12">
+            <button type="button" data-d="-1" aria-label="Un bagage de moins">−</button>
+            <b id="bagsVal">0</b>
+            <button type="button" data-d="1" aria-label="Un bagage de plus">+</button>
+          </div>
+        </div>
+      </div>
+
       <div class="row">
         <div class="field grow">
           <label for="departInput">Départ</label>

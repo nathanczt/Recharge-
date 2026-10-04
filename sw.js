@@ -1,5 +1,5 @@
 // Service worker : l'application fonctionne hors connexion (les calculs nécessitent le réseau).
-const CACHE = 'recharge-v4';
+const CACHE = 'recharge-v5';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/app.js', 'js/api.js', 'js/energy.js', 'js/geo.js', 'js/operators.js', 'js/planner.js', 'js/settings.js', 'js/stations.js',

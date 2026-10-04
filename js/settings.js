@@ -5,7 +5,8 @@ const KEY = 'recharge.settings.v1';
 export const DEFAULTS = {
   vehicle: 'kona65', // Kona Electric 2023+ (seul modèle proposé)
   batteryHealth: 100, // % de capacité restante
-  extraMassKg: 0, // passagers + bagages en plus du conducteur
+  persons: 1, // conducteur compris
+  bags: 0,
   factor: 100, // correction de conso en %
   maxSpeed: 130,
   speedFactor: 1.12, // OSRM sous-estime les vitesses réelles

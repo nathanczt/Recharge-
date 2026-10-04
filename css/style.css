@@ -261,3 +261,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @media (max-width: 360px) { .batt { grid-template-columns: 1fr; } }
 .batt-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
 .field output { white-space: nowrap; }
+.stepper { display: flex; align-items: center; justify-content: space-between; background: var(--bg-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 36px; border: 0; border-radius: 9px; background: var(--bg); color: var(--fg); font-size: 20px; cursor: pointer; }
+.stepper button:active { background: var(--accent-soft); }
+.stepper b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.load { margin-bottom: 2px; }
+/* iOS : le champ date ne doit pas déborder sur la vitesse */
+.field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; min-width: 0; width: 100%; display: block; }
