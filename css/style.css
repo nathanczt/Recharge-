@@ -268,3 +268,33 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .load { margin-bottom: 2px; }
 /* iOS : le champ date ne doit pas déborder sur la vitesse */
 .field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; min-width: 0; width: 100%; display: block; }
+
+/* ---------- Waze étape par étape ---------- */
+.waze-box { background: var(--bg-2); border-radius: 14px; padding: 12px; margin: 0 0 16px; }
+.wb-title { font-weight: 600; margin: 0 0 4px; }
+.waze-box .meta { margin-bottom: 10px; }
+.waze-legs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.waze-leg {
+  display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; text-decoration: none;
+  color: var(--fg); background: var(--bg); border: 1.5px solid var(--line);
+}
+.waze-leg.next { border-color: #33ccff; }
+.waze-leg.done { opacity: .55; }
+.wl-num { flex: none; min-width: 26px; height: 26px; border-radius: 13px; padding: 0 6px; display: grid; place-items: center; background: var(--bg-2); font-weight: 700; font-size: 13px; }
+.wl-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wl-txt b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-txt small { color: var(--muted); font-size: 12px; }
+.wl-go { flex: none; font-weight: 700; color: #0b8fc4; font-size: 14px; }
+.navbar {
+  position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 12px; right: 68px; z-index: 550;
+  display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 14px;
+  background: var(--bg); box-shadow: var(--shadow);
+}
+.nb-go { flex: 1; min-width: 0; display: flex; flex-direction: column; text-decoration: none; color: var(--fg); }
+.nb-go small { font-size: 11px; color: var(--muted); }
+.nb-go b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-btn { flex: none; padding: 8px 12px; border-radius: 10px; background: #33ccff; color: #05202b; font-weight: 700; text-decoration: none; }
+.nb-close { flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: var(--bg-2); color: var(--fg); cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+}

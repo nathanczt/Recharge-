@@ -44,9 +44,10 @@ function toast(msg, ms = 3500) {
 
 const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([46.6, 2.4], 6);
 const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}{r}.png`, {
-  maxZoom: 19, subdomains: 'abcd',
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+// Fond OpenStreetMap (assombri en CSS en mode sombre)
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
 const layers = {
   route: L.layerGroup().addTo(map),
@@ -591,6 +592,7 @@ function renderResult() {
     <a class="small-btn accent" target="_blank" rel="noopener" href="${fullTripLink(res.stops)}">Ouvrir dans Google Maps</a>
     <button class="small-btn" id="recalcBtn">Recalculer</button>
   </div>
+  ${wazeBoxHTML(res)}
   <ol class="timeline">
     <li class="tl-item tl-start"><span class="tl-badge">A</span>
       <span class="tl-time">${fmtClock(departure)}</span> · <span class="tl-name">${esc(state.from.label)}</span>
@@ -617,7 +619,7 @@ function renderResult() {
         </div>
         <div class="stop-actions">
           <a class="small-btn accent" target="_blank" rel="noopener" href="${gmaps(s)}">Google Maps</a>
-          <a class="small-btn" target="_blank" rel="noopener" href="${waze(s)}">Waze</a>
+          <a class="small-btn" target="_blank" rel="noopener" href="${waze(s)}" data-leg="${i}">Waze</a>
           <button class="small-btn" data-alts="${i}">Autres bornes</button>
           ${s.forced ? `<button class="small-btn" data-sact="unforce" data-id="${esc(s.id)}">Libérer</button>` : ''}
           <button class="small-btn" data-sact="exclude" data-id="${esc(s.id)}">Exclure</button>
@@ -636,6 +638,9 @@ function renderResult() {
   body.innerHTML = html;
 
   $('#toListBtn')?.addEventListener('click', () => $('#backBtn').click());
+  body.querySelectorAll('[data-leg]').forEach((a) => {
+    a.addEventListener('click', () => startNav(res, +a.dataset.leg));
+  });
   $('#recalcBtn').onclick = () => compute({ keepForced: true });
   body.querySelectorAll('[data-sact]').forEach((b) => { b.onclick = () => stationAction(b.dataset.sact, b.dataset.id); });
   body.querySelectorAll('[data-alts]').forEach((b) => { b.onclick = () => toggleAlts(+b.dataset.alts); });
@@ -669,6 +674,71 @@ function optionsHTML(options, departure) {
   }).join('');
   return `<p class="options-title">${options.length} itinéraires proposés · touche-en un pour le détail</p>${cards}`;
 }
+
+/* ================= Navigation Waze étape par étape ================= */
+// Waze n'accepte qu'une destination par lien : on enchaîne les étapes
+// (borne 1, borne 2… puis l'arrivée) et on garde la progression en mémoire.
+
+function navLegs(res) {
+  const legs = res.stops.map((s) => ({
+    name: s.station.name, lat: s.station.lat, lon: s.station.lon,
+    info: `recharge ${pct(s.arriveSoc)} → ${pct(s.departSoc)} · ${fmtDur(s.chargeS)}`,
+  }));
+  legs.push({ name: state.to.label, lat: state.to.lat, lon: state.to.lon, info: `arrivée avec ${pct(res.arriveSoc)}` });
+  return legs;
+}
+
+function wazeBoxHTML(res) {
+  const legs = navLegs(res);
+  const nav = loadNav();
+  const same = nav && nav.legs.length === legs.length && nav.legs.every((l, i) => l.name === legs[i].name);
+  const items = legs.map((l, i) => {
+    const cls = same ? (i < nav.i ? 'done' : i === nav.i ? 'next' : '') : (i === 0 ? 'next' : '');
+    return `<li><a class="waze-leg ${cls}" target="_blank" rel="noopener" href="${waze(l)}" data-leg="${i}">
+      <span class="wl-num">${cls === 'done' ? '✓' : i < legs.length - 1 ? i + 1 : 'B'}</span>
+      <span class="wl-txt"><b>${esc(l.name)}</b><small>${esc(l.info)}</small></span>
+      <span class="wl-go">Waze ›</span></a></li>`;
+  }).join('');
+  return `<div class="waze-box"><p class="wb-title">Faire le trajet avec Waze</p>
+    <p class="meta">Waze ne peut pas enchaîner plusieurs arrêts. Touche l'étape 1 pour partir ; après la recharge,
+    reviens ici (ou touche la barre en haut de l'écran) pour lancer l'étape suivante.</p>
+    <ol class="waze-legs">${items}</ol></div>`;
+}
+
+function loadNav() {
+  const nav = loadJSON('recharge.nav', null);
+  if (!nav || Date.now() - nav.t > 36 * 3600 * 1000) return null;
+  return nav;
+}
+
+function startNav(res, i) {
+  const legs = navLegs(res);
+  // L'étape i est en cours : la suivante sera i + 1
+  saveJSON('recharge.nav', { legs, i: i + 1, t: Date.now(), title: `${state.from.label} → ${state.to.label}` });
+  setTimeout(() => { renderNavBar(); if (state.result) renderResult(); }, 400);
+}
+
+function renderNavBar() {
+  const bar = $('#navBar');
+  const nav = loadNav();
+  if (!nav || nav.i >= nav.legs.length) { bar.hidden = true; return; }
+  const l = nav.legs[nav.i];
+  bar.innerHTML = `<a class="nb-go" target="_blank" rel="noopener" href="${waze(l)}">
+      <small>Étape suivante ${nav.i + 1}/${nav.legs.length}</small><b>${esc(l.name)}</b></a>
+    <a class="nb-btn" target="_blank" rel="noopener" href="${waze(l)}" aria-label="Ouvrir dans Waze">Waze</a>
+    <button class="nb-close" aria-label="Arrêter le guidage">✕</button>`;
+  bar.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => {
+    saveJSON('recharge.nav', { ...nav, i: nav.i + 1, t: Date.now() });
+    setTimeout(() => { renderNavBar(); if (state.result) renderResult(); }, 400);
+  }));
+  bar.querySelector('.nb-close').onclick = () => {
+    saveJSON('recharge.nav', null);
+    renderNavBar();
+    if (state.result) renderResult();
+  };
+  bar.hidden = false;
+}
+renderNavBar();
 
 function toggleAlts(i) {
   const box = $('#alts-' + i);
