@@ -1,7 +1,7 @@
 # ⚡ Recharge
 
 Planificateur d'itinéraires pour voiture électrique, pensé pour le téléphone (installable comme une app).
-Profils inclus : **Hyundai Kona Electric 64 kWh (2018-2023)** et **Kona 65 kWh (2023+)**.
+Véhicule : **Hyundai Kona Electric 65 kWh (2023+)**.
 
 ## Ce qui le distingue
 

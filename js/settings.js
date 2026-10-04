@@ -3,7 +3,7 @@
 const KEY = 'recharge.settings.v1';
 
 export const DEFAULTS = {
-  vehicle: 'kona64',
+  vehicle: 'kona65', // Kona Electric 2023+ (seul modèle proposé)
   batteryHealth: 100, // % de capacité restante
   extraMassKg: 0, // passagers + bagages en plus du conducteur
   factor: 100, // correction de conso en %
@@ -30,7 +30,7 @@ export const DEFAULTS = {
 export function loadSettings() {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULTS, ...raw };
+    return { ...DEFAULTS, ...raw, vehicle: DEFAULTS.vehicle };
   } catch {
     return { ...DEFAULTS };
   }

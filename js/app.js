@@ -172,12 +172,22 @@ $('#swapBtn').addEventListener('click', () => {
   setPlace('to', f);
 });
 
+// Les 4 pourcentages de batterie demandés dans le formulaire (mémorisés)
 const socInput = $('#socInput');
-socInput.value = settings.startSoc;
-const updSoc = () => { $('#socOut').textContent = socInput.value + ' %'; };
-socInput.addEventListener('input', updSoc);
-socInput.addEventListener('change', () => { settings.startSoc = +socInput.value; saveSettings(settings); });
-updSoc();
+const pctRefresh = [];
+function bindPct(id, key) {
+  const input = $('#' + id + 'Input');
+  const out = $('#' + id + 'Out');
+  const upd = () => { out.textContent = input.value + ' %'; };
+  const load = () => { input.value = settings[key]; upd(); };
+  input.addEventListener('input', () => { upd(); settings[key] = +input.value; saveSettings(settings); });
+  pctRefresh.push(load);
+  load();
+}
+bindPct('soc', 'startSoc');
+bindPct('arrSoc', 'arrivalSoc');
+bindPct('maxCharge', 'maxCharge');
+bindPct('minSoc', 'minSoc');
 
 function localNow() {
   const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
@@ -717,9 +727,7 @@ function openSettings() {
 
   $('#settingsBody').innerHTML = `
     <h3>Véhicule</h3>
-    <div class="field"><label for="vehSel">Modèle</label><select id="vehSel">
-      ${Object.entries(VEHICLES).map(([k, v]) => `<option value="${k}" ${k === s.vehicle ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}
-    </select></div>
+    <p class="meta"><b>${esc(VEHICLES[s.vehicle].name)}</b> · ${VEHICLES[s.vehicle].usableKWh} kWh utiles · charge rapide jusqu'à ~100 kW</p>
     ${num('healthIn', 'État de santé batterie (SoH)', s.batteryHealth, { min: 70, max: 100, unit: ' %' })}
     ${num('massIn', 'Passagers et bagages (en plus du conducteur)', s.extraMassKg, { min: 0, max: 400, step: 10, unit: ' kg' })}
 
@@ -731,10 +739,7 @@ function openSettings() {
       ${[-10, -5, 0, 5, 10, 15, 20, 25, 30, 35].map((t) => `<option value="${t}" ${s.tempOverride === t ? 'selected' : ''}>Imposer ${t} °C</option>`).join('')}
     </select></div>
 
-    <h3>Batterie</h3>
-    ${num('minSocIn', 'Réserve minimale à tout moment', s.minSoc, { min: 3, max: 30, unit: ' %' })}
-    ${num('arrSocIn', 'Batterie à l\'arrivée', s.arrivalSoc, { min: 5, max: 80, unit: ' %' })}
-    ${num('maxChargeIn', 'Recharge maximale aux bornes', s.maxCharge, { min: 60, max: 100, step: 5, unit: ' %' })}
+    <p class="meta">Les % de batterie (départ, arrivée, charge maximum, minimum) se règlent directement sur l'écran principal.</p>
 
     <h3>Bornes</h3>
     ${num('minPowIn', 'Puissance minimale', s.minPowerKW, { min: 22, max: 150, step: 1, unit: ' kW' })}
@@ -770,14 +775,10 @@ function openSettings() {
     renderCalib();
     renderCarHint();
   });
-  bind('vehSel', (el) => { settings.vehicle = el.value; });
   bind('healthIn', (el) => { settings.batteryHealth = +el.value; });
   bind('massIn', (el) => { settings.extraMassKg = +el.value; });
   bind('factorIn', (el) => { settings.factor = +el.value; });
   bind('tempMode', (el) => { settings.tempOverride = el.value === 'auto' ? null : +el.value; });
-  bind('minSocIn', (el) => { settings.minSoc = +el.value; });
-  bind('arrSocIn', (el) => { settings.arrivalSoc = +el.value; });
-  bind('maxChargeIn', (el) => { settings.maxCharge = +el.value; });
   bind('minPowIn', (el) => { settings.minPowerKW = +el.value; });
   bind('corrIn', (el) => { settings.corridorKm = +el.value; });
   bind('overIn', (el) => { settings.stopOverheadMin = +el.value; });
@@ -805,6 +806,7 @@ function openSettings() {
     if (!confirm('Remettre tous les réglages par défaut ?')) return;
     settings = { ...DEFAULTS, prices: {}, excludedOps: [], excludedStations: [] };
     saveSettings(settings);
+    pctRefresh.forEach((f) => f());
     openSettings();
   });
   renderCalib();

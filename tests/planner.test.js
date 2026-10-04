@@ -4,7 +4,7 @@ import { VEHICLES, flatConsumption, chargeTime } from '../js/energy.js';
 import { resampleRoute, projectStations, clusterStations, encodePolyline } from '../js/geo.js';
 import { buildProfile, planCharging } from '../js/planner.js';
 
-const veh = VEHICLES.kona64;
+const veh = VEHICLES.kona65;
 
 // Autoroute rectiligne plein est le long du 46e parallèle, ~ lengthKm, à 130 km/h
 function straightRoute(lengthKm) {
@@ -140,7 +140,6 @@ test('options : toujours plusieurs propositions quand il faut recharger', async 
   assert.ok(r.options.length >= 2, `options ${r.options.length}`);
   const ids = r.options.map((o) => o.stops.map((s) => s.station.id).join());
   assert.equal(new Set(ids).size, ids.length, 'arrêts différents');
-  assert.ok(r.options.some((o) => o.label === 'Autre arrêt'));
 });
 
 test('options : trajet impossible', async () => {

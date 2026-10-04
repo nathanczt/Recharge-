@@ -256,3 +256,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .opt-0 { color: var(--accent-fg); }
 .stop-marker.opt-1 { background: #2563eb; color: #fff; }
 .stop-marker.opt-2 { background: #d97706; color: #fff; }
+.batt { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.batt .field label { font-size: 12px; }
+@media (max-width: 360px) { .batt { grid-template-columns: 1fr; } }
+.batt-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.field output { white-space: nowrap; }

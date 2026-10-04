@@ -45,9 +45,24 @@
         <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
       </div>
 
-      <div class="field">
-        <label for="socInput">Batterie au départ <output id="socOut">90 %</output></label>
-        <input id="socInput" type="range" min="10" max="100" step="1" value="90">
+      <p class="batt-title">Batterie</p>
+      <div class="batt">
+        <div class="field">
+          <label for="socInput">Au départ <output id="socOut">90 %</output></label>
+          <input id="socInput" type="range" min="5" max="100" step="1" value="90">
+        </div>
+        <div class="field">
+          <label for="arrSocInput">À l'arrivée <output id="arrSocOut">15 %</output></label>
+          <input id="arrSocInput" type="range" min="5" max="80" step="1" value="15">
+        </div>
+        <div class="field">
+          <label for="maxChargeInput">Charge maximum <output id="maxChargeOut">80 %</output></label>
+          <input id="maxChargeInput" type="range" min="50" max="100" step="5" value="80">
+        </div>
+        <div class="field">
+          <label for="minSocInput">Minimum en route <output id="minSocOut">10 %</output></label>
+          <input id="minSocInput" type="range" min="3" max="30" step="1" value="10">
+        </div>
       </div>
 
       <div class="row">

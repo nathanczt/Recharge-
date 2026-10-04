@@ -2,20 +2,6 @@
 // Pur (aucune dépendance au DOM) : testable avec `node --test`.
 
 export const VEHICLES = {
-  kona64: {
-    name: 'Hyundai Kona Electric 64 kWh (2018-2023)',
-    usableKWh: 64,
-    massKg: 1685,
-    cda: 0.64, // Cx 0.29 × 2.2 m²
-    crr: 0.009,
-    driveEff: 0.88,
-    regenEff: 0.62,
-    auxKW: 0.35,
-    heatPump: true,
-    // [SoC %, kW] mesurés en conditions normales (borne ≥ 100 kW)
-    curve: [[0, 60], [5, 70], [10, 73], [57, 75], [58, 58], [74, 55], [75, 38], [85, 34], [90, 20], [95, 10], [100, 5]],
-    acMaxKW: 7.2,
-  },
   kona65: {
     name: 'Hyundai Kona Electric 65 kWh (2023+)',
     usableKWh: 64.8,
@@ -93,7 +79,7 @@ function interp(curve, x) {
   return curve[curve.length - 1][1];
 }
 
-// Réduction de puissance quand la batterie est froide (pas de préconditionnement sur la Kona 2019)
+// Réduction de puissance quand la batterie est froide (sans préconditionnement de la batterie)
 export function coldChargeFactor(tempC) {
   if (tempC >= 15) return 1;
   return Math.max(0.55, 1 - (15 - tempC) * 0.025);
