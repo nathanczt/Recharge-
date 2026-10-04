@@ -126,10 +126,21 @@ test('options : plus rapide d\'abord, moins cher en dernier, sans option dominé
   assert.ok(r.ok);
   assert.ok(r.options.length >= 2, `options ${r.options.length}`);
   const [first, ...rest] = r.options;
-  const last = r.options[r.options.length - 1];
   assert.equal(first.label, 'Le plus rapide');
-  assert.equal(last.label, 'Le moins cher');
-  for (const o of rest) assert.ok(o.totalS >= first.totalS && o.cost < first.cost, 'compromis réel');
+  assert.ok(r.options.some((o) => o.label === 'Le moins cher'));
+  for (const o of rest.filter((x) => !x.alternative)) assert.ok(o.totalS >= first.totalS && o.cost < first.cost, 'compromis réel');
+});
+
+test('options : toujours plusieurs propositions quand il faut recharger', async () => {
+  const { planOptions } = await import('../js/planner.js');
+  const { profile, stations } = setup(400, [150, 180, 200, 230, 260]);
+  // Toutes les bornes identiques : un seul compromis possible, donc des arrêts alternatifs
+  const r = planOptions(profile, stations, veh, baseCfg);
+  assert.ok(r.ok);
+  assert.ok(r.options.length >= 2, `options ${r.options.length}`);
+  const ids = r.options.map((o) => o.stops.map((s) => s.station.id).join());
+  assert.equal(new Set(ids).size, ids.length, 'arrêts différents');
+  assert.ok(r.options.some((o) => o.label === 'Autre arrêt'));
 });
 
 test('options : trajet impossible', async () => {

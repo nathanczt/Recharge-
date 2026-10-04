@@ -236,11 +236,28 @@ export function planOptions(profile, stations, veh, cfg, weights = OPTION_WEIGHT
   options.sort((a, b) => a.totalS - b.totalS || a.cost - b.cost);
   if (options.length > 3) options = [options[0], options[Math.floor(options.length / 2)], options[options.length - 1]];
 
+  // Moins de 3 options : on propose d'autres arrêts (bornes différentes) s'ils restent raisonnables
+  const fastest = options[0];
+  if (fastest.stops.length) {
+    const used = new Set();
+    const maxS = fastest.totalS + Math.max(1800, fastest.totalS * 0.12);
+    for (let tries = 0; options.length < 3 && tries < 3; tries++) {
+      for (const o of options) for (const s of o.stops) if (!s.station.forced) used.add(s.station.id);
+      const r = planCharging(profile, stations.filter((s) => !used.has(s.id)), veh, { ...cfg, secondsPerEuro: 120 });
+      if (!r.ok || r.totalS > maxS) break;
+      const sig = r.stops.map((s) => s.station.id + '@' + s.departSoc).join('|');
+      if (options.some((o) => o.sig === sig)) break;
+      options.push({ ...r, sig, alternative: true });
+    }
+  }
+
+  const minCost = Math.min(...options.map((o) => o.cost));
+  const cheapest = options.find((o) => o.cost === minCost);
   options.forEach((o, i) => {
     if (options.length === 1) o.label = 'Meilleur itinéraire';
-    else if (i === 0) o.label = 'Le plus rapide';
-    else if (i === options.length - 1) o.label = 'Le moins cher';
-    else o.label = 'Compromis';
+    else if (i === 0) o.label = o === cheapest ? 'Le plus rapide et le moins cher' : 'Le plus rapide';
+    else if (o === cheapest) o.label = 'Le moins cher';
+    else o.label = o.alternative ? 'Autre arrêt' : 'Compromis';
   });
   return { ok: true, options };
 }

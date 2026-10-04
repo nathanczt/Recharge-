@@ -205,7 +205,17 @@ drawEnds();
 if (state.from && state.to) fitMap([[state.from.lat, state.from.lon], [state.to.lat, state.to.lon]]);
 
 $('#goBtn').addEventListener('click', () => compute());
-$('#backBtn').addEventListener('click', () => showView('formView'));
+$('#backBtn').addEventListener('click', () => {
+  // Depuis le détail d'une proposition : retour à la liste des propositions
+  const r = state.result;
+  if (r && r.view === 'detail' && r.plan.ok && r.plan.options.length > 1) {
+    r.view = 'list';
+    showSelected();
+    $('#sheet').scrollTop = 0;
+    return;
+  }
+  showView('formView');
+});
 
 /* ================= Calcul ================= */
 
@@ -355,7 +365,7 @@ function vehicleCfg() {
   return { veh, capKWh: veh.usableKWh * settings.batteryHealth / 100 };
 }
 
-function runPlan(departure) {
+function runPlan(departure, { keepView = false } = {}) {
   const trip = state.trip;
   const { veh, capKWh } = vehicleCfg();
   const opts = {
@@ -390,7 +400,8 @@ function runPlan(departure) {
   // Garde le même type d'option sélectionné après un recalcul (borne imposée, exclue…)
   const prevLabel = state.result?.plan.ok ? state.result.plan.options[state.result.selected]?.label : null;
   const keep = plan.options.findIndex((o) => o.label === prevLabel);
-  state.result = { plan, selected: keep >= 0 ? keep : 0, profile, departure, cfg };
+  const view = keepView && state.result ? state.result.view : (plan.options.length > 1 ? 'list' : 'detail');
+  state.result = { plan, selected: keep >= 0 ? keep : 0, profile, departure, cfg, view };
   showSelected();
 }
 
@@ -439,23 +450,32 @@ function drawCandidates() {
   layers.candidates.clearLayers();
   layers.stops.clearLayers();
   const res = currentRes();
-  const stopIds = new Set(res.ok ? res.stops.map((s) => s.station.id) : []);
+  const { plan, view } = state.result;
+  const shown = !res.ok ? [] : view === 'list' ? plan.options : [res];
+  const stopIds = new Set(shown.flatMap((o) => o.stops.map((s) => s.station.id)));
   for (const s of state.candidates) {
     if (stopIds.has(s.id)) continue;
     L.circleMarker([s.lat, s.lon], {
       radius: s.powerKW >= 150 ? 6 : 5, color: '#fff', weight: 1.5, fillColor: powerColor(s.powerKW), fillOpacity: 0.9,
     }).bindPopup(() => stationPopup(s)).addTo(layers.candidates);
   }
-  if (res.ok) {
-    res.stops.forEach((stop, i) => {
+  const seen = new Set();
+  shown.forEach((o, k) => {
+    const oi = view === 'list' ? k : state.result.selected;
+    o.stops.forEach((stop, i) => {
       const s = stop.station;
+      if (seen.has(s.id)) return;
+      seen.add(s.id);
+      const txt = view === 'list' ? OPT_LETTERS[oi] : i + 1;
       L.marker([s.lat, s.lon], {
-        icon: L.divIcon({ className: '', html: `<div class="stop-marker">${i + 1}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
+        icon: L.divIcon({ className: '', html: `<div class="stop-marker opt-${view === 'list' ? oi : 0}">${txt}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
         zIndexOffset: 1000,
       }).bindPopup(() => stationPopup(s)).addTo(layers.stops);
     });
-  }
+  });
 }
+
+const OPT_LETTERS = ['A', 'B', 'C'];
 
 map.getContainer().addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
@@ -477,7 +497,7 @@ function stationAction(act, id) {
     state.forced.delete(oldId);
     state.forced.add(newId);
   }
-  runPlan(state.result.departure);
+  runPlan(state.result.departure, { keepView: true });
 }
 
 /* ================= Rendu résultats ================= */
@@ -508,17 +528,30 @@ function renderResult() {
     return;
   }
 
+  if (state.result.view === 'list') {
+    body.innerHTML = optionsHTML(plan.options, departure);
+    body.querySelectorAll('[data-opt]').forEach((b) => {
+      const open = () => {
+        state.result.selected = +b.dataset.opt;
+        state.result.view = 'detail';
+        showSelected();
+        $('#sheet').scrollTop = 0;
+      };
+      b.onclick = open;
+      b.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    });
+    return;
+  }
+
   const arrival = new Date(departure.getTime() + res.totalS * 1000);
   const avg = res.energyKWh / res.distKm * 100;
   const tempTxt = settings.tempOverride != null ? `${settings.tempOverride} °C`
     : state.trip.weather ? (() => { const s = state.trip.weather.summary(); const a = Math.round(s.min), b = Math.round(s.max); return a === b ? `${a} °C` : `${a} à ${b} °C`; })() : '15 °C (par défaut)';
 
-  let html = optionsHTML(plan.options, selected, departure) + `<div class="tiles">
-    <div class="tile"><b>${fmtDur(res.totalS)}</b><span>Arrivée ${fmtClock(arrival)}${arrival.toDateString() !== departure.toDateString() ? ' (J+1)' : ''}</span></div>
-    <div class="tile"><b>${fmtEuro(res.cost)}</b><span>Recharges · ${Math.round(res.gridKWh)} kWh</span></div>
-    <div class="tile"><b>${res.stops.length} arrêt${res.stops.length > 1 ? 's' : ''}</b><span>${fmtDur(res.chargeS)} de recharge</span></div>
-    <div class="tile"><b>${pct(res.arriveSoc)}</b><span>Batterie à l'arrivée</span></div>
-  </div>
+  const optHead = plan.options.length > 1
+    ? `<div class="opt-head"><span class="opt-badge opt-${selected}">${OPT_LETTERS[selected]}</span> <span class="grow">${esc(res.label)}</span>
+      <button class="small-btn" id="toListBtn">‹ Autres itinéraires</button></div>` : '';
+  let html = optHead + tilesHTML(res, departure) + `
   <p class="meta"><b>${fmtKm(res.distKm)}</b> · conduite ${fmtDur(res.driveS)} · conso moyenne <b>${avg.toFixed(1)} kWh/100</b>
    · ${tempTxt}${state.trip.elev ? ` · relief +${climb(state.trip.elev).up} m` : ''}</p>
   ${chartSVG(res, profile, state.trip.elev, cfg)}
@@ -570,29 +603,39 @@ function renderResult() {
     ${settings.source === 'ocm' && settings.ocmKey ? 'Open Charge Map' : 'OpenStreetMap'}. Touche une borne sur la carte pour l'imposer ou l'exclure.</p>`;
   body.innerHTML = html;
 
-  body.querySelectorAll('[data-opt]').forEach((b) => {
-    b.onclick = () => { state.result.selected = +b.dataset.opt; showSelected(); };
-  });
+  $('#toListBtn')?.addEventListener('click', () => $('#backBtn').click());
   $('#recalcBtn').onclick = () => compute({ keepForced: true });
   body.querySelectorAll('[data-sact]').forEach((b) => { b.onclick = () => stationAction(b.dataset.sact, b.dataset.id); });
   body.querySelectorAll('[data-alts]').forEach((b) => { b.onclick = () => toggleAlts(+b.dataset.alts); });
 }
 
-function optionsHTML(options, selected, departure) {
-  if (options.length < 2) return '';
+function tilesHTML(res, departure) {
+  const arrival = new Date(departure.getTime() + res.totalS * 1000);
+  return `<div class="tiles">
+    <div class="tile"><b>${fmtDur(res.totalS)}</b><span>Arrivée ${fmtClock(arrival)}${arrival.toDateString() !== departure.toDateString() ? ' (J+1)' : ''}</span></div>
+    <div class="tile"><b>${fmtEuro(res.cost)}</b><span>Recharges · ${Math.round(res.gridKWh)} kWh</span></div>
+    <div class="tile"><b>${res.stops.length} arrêt${res.stops.length > 1 ? 's' : ''}</b><span>${fmtDur(res.chargeS)} de recharge</span></div>
+    <div class="tile"><b>${pct(res.arriveSoc)}</b><span>Batterie à l'arrivée</span></div>
+  </div>`;
+}
+
+// Liste des propositions : une carte par itinéraire, à toucher pour voir le détail
+function optionsHTML(options, departure) {
   const fastest = options[0];
   const cards = options.map((o, i) => {
-    const arr = new Date(departure.getTime() + o.totalS * 1000);
     const dt = o.totalS - fastest.totalS;
     const de = o.cost - fastest.cost;
-    const diff = i === 0 ? '' : `<small>+${fmtDur(dt)} · ${de <= 0 ? '−' : '+'}${fmtEuro(Math.abs(de))}</small>`;
-    return `<button class="option" data-opt="${i}" aria-pressed="${i === selected}">
-      <span class="opt-label">${o.label}</span>
-      <span class="opt-nums"><b>${fmtDur(o.totalS)} · ${fmtEuro(o.cost)}</b>${diff}</span>
-      <span class="opt-sub">Arrivée ${fmtClock(arr)} · ${o.stops.length} arrêt${o.stops.length > 1 ? 's' : ''} · ${fmtDur(o.chargeS)} de charge</span>
-    </button>`;
+    const diff = i === 0 ? '' : `<p class="rc-diff">${dt >= 60 ? '+' + fmtDur(dt) : 'même durée'} · ${Math.abs(de) < 0.01 ? 'même prix' : (de < 0 ? '−' : '+') + fmtEuro(Math.abs(de))} par rapport à A</p>`;
+    const via = o.stops.length ? 'via ' + o.stops.map((s) => esc(s.station.name)).join(', ') : 'sans recharge';
+    return `<div class="route-card" role="button" tabindex="0" data-opt="${i}">
+      <div class="rc-head"><span class="opt-badge opt-${i}">${OPT_LETTERS[i]}</span>
+        <div class="rc-title"><b>${esc(o.label)}</b><span>${via}</span></div></div>
+      ${tilesHTML(o, departure)}
+      ${diff}
+      <span class="rc-more">Voir le détail ›</span>
+    </div>`;
   }).join('');
-  return `<p class="options-title">${options.length} itinéraires possibles</p><div class="options">${cards}</div>`;
+  return `<p class="options-title">${options.length} itinéraires proposés · touche-en un pour le détail</p>${cards}`;
 }
 
 function toggleAlts(i) {
