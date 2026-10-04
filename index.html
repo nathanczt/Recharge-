@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Recharge — itinéraires VE</title>
+  <meta name="description" content="Planificateur d'itinéraires pour voiture électrique : consommation précise, choix des bornes, coût du trajet.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="map" aria-label="Carte"></div>
+
+  <button id="settingsBtn" class="fab" aria-label="Réglages" title="Réglages">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
+  </button>
+
+  <section id="sheet" class="sheet" data-state="open">
+    <button class="sheet-handle" id="sheetHandle" aria-label="Agrandir / réduire le panneau"><span></span></button>
+
+    <!-- Formulaire -->
+    <div id="formView" class="view">
+      <h1 class="brand">⚡ Recharge</h1>
+      <div class="places">
+        <div class="place">
+          <span class="dot dot-start"></span>
+          <input id="fromInput" type="text" placeholder="Départ" autocomplete="off" enterkeyhint="next">
+          <button id="locateBtn" class="icon-btn" title="Ma position" aria-label="Utiliser ma position">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
+          </button>
+        </div>
+        <div class="place">
+          <span class="dot dot-end"></span>
+          <input id="toInput" type="text" placeholder="Arrivée" autocomplete="off" enterkeyhint="go">
+          <button id="swapBtn" class="icon-btn" title="Inverser" aria-label="Inverser départ et arrivée">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 3 3 7l4 4V8h7V6H7V3Zm10 10v3h-7v2h7v3l4-4-4-4Z"/></svg>
+          </button>
+        </div>
+        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+      </div>
+
+      <div class="field">
+        <label for="socInput">Batterie au départ <output id="socOut">90 %</output></label>
+        <input id="socInput" type="range" min="10" max="100" step="1" value="90">
+      </div>
+
+      <div class="row">
+        <div class="field grow">
+          <label for="departInput">Départ</label>
+          <input id="departInput" type="datetime-local">
+        </div>
+        <div class="field">
+          <label for="speedSelect">Vitesse max</label>
+          <select id="speedSelect">
+            <option value="110">110</option>
+            <option value="120">120</option>
+            <option value="130">130</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">Priorité</span>
+        <div class="chips" role="radiogroup" id="modeChips">
+          <button role="radio" data-mode="fast">⏱️ Rapide</button>
+          <button role="radio" data-mode="balanced">⚖️ Équilibré</button>
+          <button role="radio" data-mode="cheap">💶 Économique</button>
+        </div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="tollsInput"> Éviter les péages</label>
+
+      <button id="goBtn" class="primary">Calculer l'itinéraire</button>
+      <p class="hint" id="carHint"></p>
+    </div>
+
+    <!-- Progression -->
+    <div id="loadingView" class="view" hidden>
+      <h2>Calcul en cours…</h2>
+      <ol id="steps" class="steps"></ol>
+      <button id="cancelBtn" class="secondary">Annuler</button>
+    </div>
+
+    <!-- Résultats -->
+    <div id="resultView" class="view" hidden>
+      <div class="result-head">
+        <button id="backBtn" class="icon-btn" aria-label="Modifier le trajet">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>
+        </button>
+        <div class="result-title" id="resultTitle"></div>
+      </div>
+      <div id="resultBody"></div>
+    </div>
+  </section>
+
+  <!-- Réglages -->
+  <dialog id="settingsDlg" class="dialog">
+    <form method="dialog" id="settingsForm">
+      <header class="dlg-head">
+        <h2>Réglages</h2>
+        <button class="icon-btn" value="close" aria-label="Fermer">✕</button>
+      </header>
+      <div class="dlg-body" id="settingsBody"></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
